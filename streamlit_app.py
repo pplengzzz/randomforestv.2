@@ -131,3 +131,4 @@ if uploaded_file is not None:
 
 else:
     st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
+
