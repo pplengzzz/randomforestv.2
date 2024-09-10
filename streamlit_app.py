@@ -26,6 +26,10 @@ def read_and_clean_data(file_path):
 def fill_missing_timestamps(data):
     full_range = pd.date_range(start=data.index.min(), end=data.index.max(), freq='15T')
     full_data = data.reindex(full_range)
+    
+    # เติมค่าในคอลัมน์ code ด้วยค่าที่ไม่ใช่ None
+    full_data['code'] = full_data['code'].fillna(method='ffill').fillna(method='bfill')
+    
     return full_data
 
 # ฟังก์ชันสำหรับการเพิ่มฟีเจอร์ด้านเวลาและ lag features
@@ -98,11 +102,19 @@ if uploaded_file is not None:
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
 
+    # ตรวจสอบค่าของ start_date และ end_date
+    st.write(f"Start Date: {start_date}")
+    st.write(f"End Date: {end_date}")
+
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
         # กรองข้อมูลตามช่วงวันที่ที่เลือก
         selected_data = cleaned_data[start_date:end_date]
         
+        # ตรวจสอบข้อมูลที่ถูกกรอง
+        st.write("Filtered Data:")
+        st.write(selected_data)
+
         # เติมช่วงเวลาให้ครบทุก 15 นาที
         full_data = fill_missing_timestamps(selected_data)
 
@@ -127,4 +139,3 @@ if uploaded_file is not None:
 
 else:
     st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
-
