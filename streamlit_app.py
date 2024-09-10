@@ -91,6 +91,10 @@ if uploaded_file is not None:
     start_date = st.date_input('เลือกวันเริ่มต้น', cleaned_data.index.min().date())
     end_date = st.date_input('เลือกวันสิ้นสุด', cleaned_data.index.max().date())
 
+    # แปลง start_date และ end_date เป็นชนิด datetime
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
         # เติมช่วงเวลาให้ครบทุก 15 นาที
@@ -118,3 +122,4 @@ if uploaded_file is not None:
 
 else:
     st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
+
