@@ -87,24 +87,34 @@ if uploaded_file is not None:
     # อ่านไฟล์ CSV ที่อัปโหลด
     cleaned_data = read_and_clean_data(uploaded_file)
 
-    # เติมช่วงเวลาให้ครบทุก 15 นาที
-    full_data = fill_missing_timestamps(cleaned_data)
+    # ให้ผู้ใช้เลือกช่วงวันสำหรับทำนาย
+    start_date = st.date_input('เลือกวันเริ่มต้น', cleaned_data.index.min().date())
+    end_date = st.date_input('เลือกวันสิ้นสุด', cleaned_data.index.max().date())
 
-    # เพิ่มฟีเจอร์
-    full_data = add_features(full_data)
+    # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
+    if start_date < end_date:
+        # เติมช่วงเวลาให้ครบทุก 15 นาที
+        selected_data = cleaned_data[start_date:end_date]
+        full_data = fill_missing_timestamps(selected_data)
 
-    # เติมค่าและเก็บตำแหน่งของ NaN เดิม
-    filled_data, original_nan_indexes = fill_missing_values(full_data)
+        # เพิ่มฟีเจอร์
+        full_data = add_features(full_data)
 
-    # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
-    st.markdown("---")
-    st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
+        # เติมค่าและเก็บตำแหน่งของ NaN เดิม
+        filled_data, original_nan_indexes = fill_missing_values(full_data)
 
-    plot_filled_data(filled_data, original_nan_indexes)
+        # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
+        st.markdown("---")
+        st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
 
-    # แสดงผลลัพธ์การทำนายเป็นตาราง
-    st.subheader('ตารางข้อมูลที่ทำนาย')
-    st.write(filled_data)
+        plot_filled_data(filled_data, original_nan_indexes)
+
+        # แสดงผลลัพธ์การทำนายเป็นตารางที่มีแค่ datetime, code, wl_up
+        st.subheader('ตารางข้อมูลที่ทำนาย (datetime, code, wl_up)')
+        st.write(filled_data[['datetime', 'code', 'wl_up']])
+
+    else:
+        st.error("กรุณาเลือกช่วงวันที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
 
 else:
     st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
