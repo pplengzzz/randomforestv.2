@@ -84,29 +84,30 @@ def plot_filled_data(filled_data, original_nan_indexes):
 
 # การประมวลผลหลังจากอัปโหลดไฟล์
 if uploaded_file is not None:
+    # อ่านไฟล์ CSV ที่อัปโหลด
     cleaned_data = read_and_clean_data(uploaded_file)
 
-    # ให้ผู้ใช้เลือกช่วงวันสำหรับทำนาย
-    start_date = st.date_input('เลือกวันเริ่มต้น', cleaned_data.index.min().date())
-    end_date = st.date_input('เลือกวันสิ้นสุด', cleaned_data.index.max().date())
+    # เติมช่วงเวลาให้ครบทุก 15 นาที
+    full_data = fill_missing_timestamps(cleaned_data)
 
-    # แปลง start_date และ end_date เป็นชนิด datetime
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
+    # เพิ่มฟีเจอร์
+    full_data = add_features(full_data)
+
+    # เลือกช่วงวันที่จากผู้ใช้
+    start_date = st.date_input("เลือกวันเริ่มต้น", pd.to_datetime(full_data.index.min()).date())
+    end_date = st.date_input("เลือกวันสิ้นสุด", pd.to_datetime(full_data.index.max()).date())
+
+    # แปลง start_date และ end_date เป็นชนิด datetime และลบ timezone เพื่อให้เป็น tz-naive
+    start_date = pd.to_datetime(start_date).tz_localize(None)
+    end_date = pd.to_datetime(end_date).tz_localize(None)
 
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
-        # กรองข้อมูลตามช่วงวันที่ที่เลือก
-        selected_data = cleaned_data.loc[start_date:end_date]
-
-        # เติมช่วงเวลาให้ครบทุก 15 นาที
-        full_data = fill_missing_timestamps(selected_data)
-
-        # เพิ่มฟีเจอร์
-        full_data = add_features(full_data)
+        # กรองข้อมูลตามช่วงวันที่ที่เลือก และลบ timezone ของ cleaned_data เพื่อให้ตรงกัน
+        selected_data = full_data.tz_localize(None).loc[start_date:end_date]
 
         # เติมค่าและเก็บตำแหน่งของ NaN เดิม
-        filled_data, original_nan_indexes = fill_missing_values(full_data)
+        filled_data, original_nan_indexes = fill_missing_values(selected_data)
 
         # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
         st.markdown("---")
@@ -114,12 +115,9 @@ if uploaded_file is not None:
 
         plot_filled_data(filled_data, original_nan_indexes)
 
-        # แสดงผลลัพธ์การทำนายเป็นตารางที่มีแค่ datetime, code, wl_up
+        # แสดงผลลัพธ์การทำนายเป็นตาราง
         st.subheader('ตารางข้อมูลที่ทำนาย (datetime, code, wl_up)')
-        st.write(filled_data[['code', 'wl_up']].reset_index())  # ใช้ reset_index เพื่อให้ datetime กลับมาในตาราง
+        st.write(filled_data[['code', 'wl_up']])
 
     else:
-        st.error("กรุณาเลือกช่วงวันที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
-
-else:
-    st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
+        st.error("กรุณาเลือกช่วงวันที่ที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
