@@ -1,151 +1,110 @@
 import streamlit as st
 import pandas as pd
-import math
-from pathlib import Path
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.ensemble import RandomForestRegressor
 
-# Set the title and favicon that appear in the Browser's tab bar.
-st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
-)
+# ตั้งค่าหน้าเว็บ Streamlit
+st.set_page_config(page_title='Water Level Prediction (RandomForest)', page_icon=':ocean:')
 
-# -----------------------------------------------------------------------------
-# Declare some useful functions.
+# ชื่อของแอป
+st.title("การจัดการข้อมูลระดับน้ำและการพยากรณ์ด้วย RandomForest")
 
-@st.cache_data
-def get_gdp_data():
-    """Grab GDP data from a CSV file.
+# อัปโหลดไฟล์ CSV
+uploaded_file = st.file_uploader("เลือกไฟล์ CSV", type="csv")
 
-    This uses caching to avoid having to read the file every time. If we were
-    reading from an HTTP endpoint instead of a file, it's a good idea to set
-    a maximum age to the cache with the TTL argument: @st.cache_data(ttl='1d')
-    """
+# ฟังก์ชันสำหรับการอ่านข้อมูล
+def read_and_clean_data(file_path):
+    data = pd.read_csv(file_path)
+    # ทำความสะอาดข้อมูลให้อยู่ในช่วงที่ต้องการ
+    cleaned_data = data[(data['wl_up'] >= 100) & (data['wl_up'] <= 450)].copy()
+    cleaned_data['datetime'] = pd.to_datetime(cleaned_data['datetime'])
+    cleaned_data.set_index('datetime', inplace=True)
+    return cleaned_data
 
-    # Instead of a CSV on disk, you could read from an HTTP endpoint here too.
-    DATA_FILENAME = Path(__file__).parent/'data/gdp_data.csv'
-    raw_gdp_df = pd.read_csv(DATA_FILENAME)
+# ฟังก์ชันสำหรับการเติมช่วงเวลาให้ครบทุก 15 นาที
+def fill_missing_timestamps(data):
+    full_range = pd.date_range(start=data.index.min(), end=data.index.max(), freq='15T')
+    full_data = data.reindex(full_range)
+    return full_data
 
-    MIN_YEAR = 1960
-    MAX_YEAR = 2022
+# ฟังก์ชันสำหรับการเพิ่มฟีเจอร์ด้านเวลาและ lag features
+def add_features(data):
+    data['hour'] = data.index.hour
+    data['day_of_week'] = data.index.dayofweek
+    data['minute'] = data.index.minute
+    data['lag_1'] = data['wl_up'].shift(1)
+    data['lag_2'] = data['wl_up'].shift(2)
+    data['lag_1'].ffill(inplace=True)
+    data['lag_2'].ffill(inplace=True)
+    return data
 
-    # The data above has columns like:
-    # - Country Name
-    # - Country Code
-    # - [Stuff I don't care about]
-    # - GDP for 1960
-    # - GDP for 1961
-    # - GDP for 1962
-    # - ...
-    # - GDP for 2022
-    #
-    # ...but I want this instead:
-    # - Country Name
-    # - Country Code
-    # - Year
-    # - GDP
-    #
-    # So let's pivot all those year-columns into two: Year and GDP
-    gdp_df = raw_gdp_df.melt(
-        ['Country Code'],
-        [str(x) for x in range(MIN_YEAR, MAX_YEAR + 1)],
-        'Year',
-        'GDP',
-    )
+# ฟังก์ชันสำหรับการเติมค่าด้วย RandomForestRegressor
+def fill_missing_values(data):
+    original_nan_indexes = data[data['wl_up'].isna()].index
+    data['week'] = data.index.to_period("W").astype(str)
+    missing_weeks = data[data['wl_up'].isna()]['week'].unique()
+    filled_data = data.copy()
 
-    # Convert years from string to integers
-    gdp_df['Year'] = pd.to_numeric(gdp_df['Year'])
+    for week in missing_weeks:
+        week_data = data[data['week'] == week]
+        missing_idx = week_data[week_data['wl_up'].isna()].index
+        train_data = week_data.dropna(subset=['wl_up', 'hour', 'day_of_week', 'minute', 'lag_1', 'lag_2'])
 
-    return gdp_df
+        if len(train_data) > 1:
+            X_train = train_data[['hour', 'day_of_week', 'minute', 'lag_1', 'lag_2']]
+            y_train = train_data['wl_up']
+            model = RandomForestRegressor(n_estimators=100, random_state=42)
+            model.fit(X_train, y_train)
 
-gdp_df = get_gdp_data()
+            X_missing = week_data.loc[missing_idx, ['hour', 'day_of_week', 'minute', 'lag_1', 'lag_2']]
+            X_missing_clean = X_missing.dropna()
 
-# -----------------------------------------------------------------------------
-# Draw the actual page
+            if not X_missing_clean.empty:
+                filled_values = model.predict(X_missing_clean)
+                filled_data.loc[X_missing_clean.index, 'wl_up'] = filled_values
 
-# Set the title that appears at the top of the page.
-'''
-# :earth_americas: GDP dashboard
+    filled_data['wl_up'].ffill(inplace=True)
+    filled_data['wl_up'].bfill(inplace=True)
+    return filled_data, original_nan_indexes
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
-'''
+# ฟังก์ชันสำหรับการ plot ข้อมูล
+def plot_filled_data(filled_data, original_nan_indexes):
+    plt.figure(figsize=(14, 7))
+    plt.plot(filled_data.index, filled_data['wl_up'], label='Actual Values', color='blue', alpha=0.6)
+    filled_points = filled_data.loc[original_nan_indexes]
+    plt.scatter(filled_points.index, filled_points['wl_up'], label='Filled Values', color='red', alpha=0.6)
+    plt.title('Water Level Over Time with Filled Values')
+    plt.xlabel('DateTime')
+    plt.ylabel('Water Level (wl_up)')
+    plt.legend()
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    st.pyplot(plt)
 
-# Add some spacing
-''
-''
+# การประมวลผลหลังจากอัปโหลดไฟล์
+if uploaded_file is not None:
+    # อ่านไฟล์ CSV ที่อัปโหลด
+    cleaned_data = read_and_clean_data(uploaded_file)
 
-min_value = gdp_df['Year'].min()
-max_value = gdp_df['Year'].max()
+    # เติมช่วงเวลาให้ครบทุก 15 นาที
+    full_data = fill_missing_timestamps(cleaned_data)
 
-from_year, to_year = st.slider(
-    'Which years are you interested in?',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+    # เพิ่มฟีเจอร์
+    full_data = add_features(full_data)
 
-countries = gdp_df['Country Code'].unique()
+    # เติมค่าและเก็บตำแหน่งของ NaN เดิม
+    filled_data, original_nan_indexes = fill_missing_values(full_data)
 
-if not len(countries):
-    st.warning("Select at least one country")
+    # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
+    st.markdown("---")
+    st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
 
-selected_countries = st.multiselect(
-    'Which countries would you like to view?',
-    countries,
-    ['DEU', 'FRA', 'GBR', 'BRA', 'MEX', 'JPN'])
+    plot_filled_data(filled_data, original_nan_indexes)
 
-''
-''
-''
+    # แสดงผลลัพธ์การทำนายเป็นตาราง
+    st.subheader('ตารางข้อมูลที่ทำนาย')
+    st.write(filled_data)
 
-# Filter the data
-filtered_gdp_df = gdp_df[
-    (gdp_df['Country Code'].isin(selected_countries))
-    & (gdp_df['Year'] <= to_year)
-    & (from_year <= gdp_df['Year'])
-]
-
-st.header('GDP over time', divider='gray')
-
-''
-
-st.line_chart(
-    filtered_gdp_df,
-    x='Year',
-    y='GDP',
-    color='Country Code',
-)
-
-''
-''
-
-
-first_year = gdp_df[gdp_df['Year'] == from_year]
-last_year = gdp_df[gdp_df['Year'] == to_year]
-
-st.header(f'GDP in {to_year}', divider='gray')
-
-''
-
-cols = st.columns(4)
-
-for i, country in enumerate(selected_countries):
-    col = cols[i % len(cols)]
-
-    with col:
-        first_gdp = first_year[first_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-        last_gdp = last_year[last_year['Country Code'] == country]['GDP'].iat[0] / 1000000000
-
-        if math.isnan(first_gdp):
-            growth = 'n/a'
-            delta_color = 'off'
-        else:
-            growth = f'{last_gdp / first_gdp:,.2f}x'
-            delta_color = 'normal'
-
-        st.metric(
-            label=f'{country} GDP',
-            value=f'{last_gdp:,.0f}B',
-            delta=growth,
-            delta_color=delta_color
-        )
+else:
+    st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
