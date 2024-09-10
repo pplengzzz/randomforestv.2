@@ -102,15 +102,11 @@ if uploaded_file is not None:
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
 
-    # ตรวจสอบค่าของ start_date และ end_date
-    st.write(f"Start Date: {start_date}")
-    st.write(f"End Date: {end_date}")
-
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
         # กรองข้อมูลตามช่วงวันที่ที่เลือก
         selected_data = cleaned_data[start_date:end_date]
-        
+
         # ตรวจสอบข้อมูลที่ถูกกรอง
         st.write("Filtered Data:")
         st.write(selected_data)
