@@ -120,7 +120,7 @@ if uploaded_file is not None:
 
         # แสดงผลลัพธ์การทำนายเป็นตารางที่มีแค่ datetime, code, wl_up
         st.subheader('ตารางข้อมูลที่ทำนาย (datetime, code, wl_up)')
-        st.write(filled_data[['datetime', 'code', 'wl_up']])
+        st.write(filled_data[['code', 'wl_up']].reset_index())  # ใช้ reset_index เพื่อให้ datetime กลับมาในตาราง
 
     else:
         st.error("กรุณาเลือกช่วงวันที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
