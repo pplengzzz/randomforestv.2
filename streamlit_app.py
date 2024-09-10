@@ -87,6 +87,9 @@ if uploaded_file is not None:
     # อ่านไฟล์ CSV ที่อัปโหลด
     cleaned_data = read_and_clean_data(uploaded_file)
 
+    # ลบข้อมูล timezone ออกจาก cleaned_data index (ถ้ามี)
+    cleaned_data.index = cleaned_data.index.tz_localize(None)
+
     # ให้ผู้ใช้เลือกช่วงวันสำหรับทำนาย
     start_date = st.date_input('เลือกวันเริ่มต้น', cleaned_data.index.min().date())
     end_date = st.date_input('เลือกวันสิ้นสุด', cleaned_data.index.max().date())
@@ -97,8 +100,10 @@ if uploaded_file is not None:
 
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
-        # เติมช่วงเวลาให้ครบทุก 15 นาที
+        # กรองข้อมูลตามช่วงวันที่ที่เลือก
         selected_data = cleaned_data[start_date:end_date]
+        
+        # เติมช่วงเวลาให้ครบทุก 15 นาที
         full_data = fill_missing_timestamps(selected_data)
 
         # เพิ่มฟีเจอร์
