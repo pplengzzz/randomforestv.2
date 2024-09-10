@@ -26,10 +26,6 @@ def read_and_clean_data(file_path):
 def fill_missing_timestamps(data):
     full_range = pd.date_range(start=data.index.min(), end=data.index.max(), freq='15T')
     full_data = data.reindex(full_range)
-    
-    # เติมค่าในคอลัมน์ code ด้วยค่าที่ไม่ใช่ None
-    full_data['code'] = full_data['code'].fillna(method='ffill').fillna(method='bfill')
-    
     return full_data
 
 # ฟังก์ชันสำหรับการเพิ่มฟีเจอร์ด้านเวลาและ lag features
@@ -88,11 +84,7 @@ def plot_filled_data(filled_data, original_nan_indexes):
 
 # การประมวลผลหลังจากอัปโหลดไฟล์
 if uploaded_file is not None:
-    # อ่านไฟล์ CSV ที่อัปโหลด
     cleaned_data = read_and_clean_data(uploaded_file)
-
-    # ลบข้อมูล timezone ออกจาก cleaned_data index (ถ้ามี)
-    cleaned_data.index = cleaned_data.index.tz_localize(None)
 
     # ให้ผู้ใช้เลือกช่วงวันสำหรับทำนาย
     start_date = st.date_input('เลือกวันเริ่มต้น', cleaned_data.index.min().date())
@@ -131,4 +123,3 @@ if uploaded_file is not None:
 
 else:
     st.write("กรุณาอัปโหลดไฟล์ CSV เพื่อเริ่มการทำนาย")
-
