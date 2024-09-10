@@ -105,11 +105,7 @@ if uploaded_file is not None:
     # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
         # กรองข้อมูลตามช่วงวันที่ที่เลือก
-        selected_data = cleaned_data[start_date:end_date]
-
-        # ตรวจสอบข้อมูลที่ถูกกรอง
-        st.write("Filtered Data:")
-        st.write(selected_data)
+        selected_data = cleaned_data.loc[start_date:end_date]
 
         # เติมช่วงเวลาให้ครบทุก 15 นาที
         full_data = fill_missing_timestamps(selected_data)
