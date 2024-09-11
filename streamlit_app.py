@@ -13,10 +13,10 @@ st.title("การจัดการข้อมูลระดับน้ำ�
 # อัปโหลดไฟล์ CSV
 uploaded_file = st.file_uploader("เลือกไฟล์ CSV", type="csv")
 
-# ฟังก์ชันสำหรับการอ่านข้อมูล
+# ฟังก์ชันสำหรับการอ่านข้อมูลและทำความสะอาด
 def read_and_clean_data(file_path):
     data = pd.read_csv(file_path)
-    # ทำความสะอาดข้อมูลให้อยู่ในช่วงที่ต้องการ
+    # ทำความสะอาดข้อมูลให้อยู่ในช่วงที่ต้องการ (ระดับน้ำ >= 100)
     cleaned_data = data[(data['wl_up'] >= 100) & (data['wl_up'] <= 450)].copy()
     cleaned_data['datetime'] = pd.to_datetime(cleaned_data['datetime'])
     cleaned_data.set_index('datetime', inplace=True)
@@ -24,6 +24,7 @@ def read_and_clean_data(file_path):
 
 # ฟังก์ชันสำหรับการเติมช่วงเวลาให้ครบทุก 15 นาที
 def fill_missing_timestamps(data):
+    data = data[~data.index.duplicated(keep='first')]
     full_range = pd.date_range(start=data.index.min(), end=data.index.max(), freq='15T')
     full_data = data.reindex(full_range)
     return full_data
@@ -75,23 +76,20 @@ def predict_next_3_days(data, model):
     future_dates = pd.date_range(start=last_row.name, periods=288+1, freq='15T')[1:]  # สร้างช่วงเวลาสำหรับ 3 วันข้างหน้า (15 นาที)
     
     for future_date in future_dates:
-        # เพิ่มฟีเจอร์ด้านเวลา
         hour = future_date.hour
         day_of_week = future_date.dayofweek
         minute = future_date.minute
-        lag_1 = data['wl_up'].iloc[-1]  # ใช้ค่าล่าสุดเป็น lag_1
-        lag_2 = data['wl_up'].iloc[-2]  # ใช้ค่าก่อนล่าสุดเป็น lag_2
+        lag_1 = data['wl_up'].iloc[-1]
+        lag_2 = data['wl_up'].iloc[-2]
 
         X_future = np.array([[hour, day_of_week, minute, lag_1, lag_2]])
         future_prediction = model.predict(X_future)[0]
         
-        # เก็บผลลัพธ์พยากรณ์
         predictions.append(future_prediction)
 
-        # อัปเดตข้อมูลเพื่อใช้ในการพยากรณ์ครั้งถัดไป
         new_row = pd.DataFrame({'hour': [hour], 'day_of_week': [day_of_week], 'minute': [minute], 
                                 'lag_1': [lag_1], 'lag_2': [lag_2], 'wl_up': [future_prediction]}, index=[future_date])
-        data = pd.concat([data, new_row])  # ใช้ pd.concat แทน .append()
+        data = pd.concat([data, new_row])
 
     future_data = pd.DataFrame({'wl_up': predictions}, index=future_dates)
     return future_data
@@ -118,8 +116,19 @@ def plot_filled_data(filled_data, future_data=None, original_nan_indexes=None):
 
 # การประมวลผลหลังจากอัปโหลดไฟล์
 if uploaded_file is not None:
-    # อ่านไฟล์ CSV ที่อัปโหลด
+    # อ่านไฟล์ CSV ที่อัปโหลดและทำความสะอาดข้อมูล
     cleaned_data = read_and_clean_data(uploaded_file)
+
+    # แสดงกราฟข้อมูลที่อัปโหลด (ก่อนเติมค่าและทำการทำนาย)
+    st.subheader('ตัวอย่างข้อมูล')
+    plt.figure(figsize=(14, 7))
+    plt.plot(cleaned_data.index, cleaned_data['wl_up'], color='red', alpha=0.6)
+    plt.title('Water Level Before Filling Missing Data')
+    plt.xlabel('วันที่')
+    plt.ylabel('ระดับน้ำ (wl_up)')
+    plt.grid(True)
+    plt.xticks(rotation=45)
+    st.pyplot(plt)
 
     # เติมช่วงเวลาให้ครบทุก 15 นาที
     full_data = fill_missing_timestamps(cleaned_data)
@@ -128,26 +137,20 @@ if uploaded_file is not None:
     full_data = add_features(full_data)
 
     # เลือกช่วงวันที่จากผู้ใช้
-    start_date = st.date_input("เลือกวันเริ่มต้น", pd.to_datetime(full_data.index.min()).date())
-    end_date = st.date_input("เลือกวันสิ้นสุด", pd.to_datetime(full_data.index.max()).date())
+    start_date = st.date_input("วันที่เริ่มต้น", pd.to_datetime(full_data.index.min()).date())
+    end_date = st.date_input("วันที่สิ้นสุด", pd.to_datetime(full_data.index.max()).date())
 
-    # แปลง start_date และ end_date เป็นชนิด datetime และลบ timezone เพื่อให้เป็น tz-naive
     start_date = pd.to_datetime(start_date).tz_localize(None)
     end_date = pd.to_datetime(end_date).tz_localize(None)
 
-    # ตรวจสอบว่าช่วงวันที่เลือกถูกต้องหรือไม่
     if start_date < end_date:
-        # กรองข้อมูลตามช่วงวันที่ที่เลือก และลบ timezone ของ cleaned_data เพื่อให้ตรงกัน
+        # กรองข้อมูลตามช่วงวันที่ที่เลือก
         selected_data = full_data.tz_localize(None).loc[start_date:end_date]
 
         # เติมค่าและเก็บตำแหน่งของ NaN เดิม
         filled_data, original_nan_indexes = fill_missing_values(selected_data)
 
-        # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
-        st.markdown("---")
-        st.write("เติมค่าในข้อมูลที่ขาดหายและทำนายค่าระดับน้ำในอีก 3 วันข้างหน้า")
-
-        # สร้างและเทรนโมเดล RandomForest ใหม่โดยใช้ข้อมูลทั้งหมด (รวมค่าจริงและค่าที่เติมแล้ว)
+        # เทรนโมเดล RandomForest ใหม่
         X_train = filled_data[['hour', 'day_of_week', 'minute', 'lag_1', 'lag_2']]
         y_train = filled_data['wl_up']
         model = RandomForestRegressor(n_estimators=100, random_state=42)
@@ -164,9 +167,10 @@ if uploaded_file is not None:
         st.write(filled_data[['wl_up']])
         st.subheader('ตารางการพยากรณ์ 3 วันข้างหน้า (datetime, wl_up)')
         st.write(future_data)
-
+    
     else:
-        st.error("กรุณาเลือกช่วงวันที่ที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
+        st.error("กรุณาเลือกช่วงวันที่ที่ถูกต้อง")
+
 
 
 
