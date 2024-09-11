@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error
 
 # ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(page_title='Water Level Prediction (RandomForest)', page_icon=':ocean:')
@@ -67,7 +66,7 @@ def fill_missing_values(data):
 
     filled_data['wl_up'].ffill(inplace=True)
     filled_data['wl_up'].bfill(inplace=True)
-    return filled_data, original_nan_indexes, model
+    return filled_data, original_nan_indexes
 
 # ฟังก์ชันสำหรับการพยากรณ์ข้อมูล 3 วันข้างหน้า
 def predict_next_3_days(data, model):
@@ -142,11 +141,17 @@ if uploaded_file is not None:
         selected_data = full_data.tz_localize(None).loc[start_date:end_date]
 
         # เติมค่าและเก็บตำแหน่งของ NaN เดิม
-        filled_data, original_nan_indexes, model = fill_missing_values(selected_data)
+        filled_data, original_nan_indexes = fill_missing_values(selected_data)
 
         # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
         st.markdown("---")
-        st.write("เติมค่าในข้อมูลที่ขาดหายและทำนายค่าระดับน้ำในอีก 3 วันข้างหน้า")
+        st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
+
+        # สร้างและเทรนโมเดล RandomForest ใหม่โดยใช้ข้อมูลทั้งหมด (รวมค่าจริงและค่าที่เติมแล้ว)
+        X_train = filled_data[['hour', 'day_of_week', 'minute', 'lag_1', 'lag_2']]
+        y_train = filled_data['wl_up']
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X_train, y_train)
 
         # พยากรณ์ 3 วันข้างหน้า
         future_data = predict_next_3_days(filled_data, model)
@@ -157,12 +162,12 @@ if uploaded_file is not None:
         # แสดงผลลัพธ์การทำนายเป็นตาราง
         st.subheader('ตารางข้อมูลที่เติมค่า (datetime, wl_up)')
         st.write(filled_data[['wl_up']])
-
-        # แสดงผลลัพธ์การพยากรณ์ 3 วันข้างหน้าเป็นตาราง
         st.subheader('ตารางการพยากรณ์ 3 วันข้างหน้า (datetime, wl_up)')
         st.write(future_data)
 
     else:
         st.error("กรุณาเลือกช่วงวันที่ที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
+
+
 
 
