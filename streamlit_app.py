@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error
 
 # ตั้งค่าหน้าเว็บ Streamlit
 st.set_page_config(page_title='Water Level Prediction (RandomForest)', page_icon=':ocean:')
@@ -66,15 +67,48 @@ def fill_missing_values(data):
 
     filled_data['wl_up'].ffill(inplace=True)
     filled_data['wl_up'].bfill(inplace=True)
-    return filled_data, original_nan_indexes
+    return filled_data, original_nan_indexes, model
+
+# ฟังก์ชันสำหรับการพยากรณ์ข้อมูล 3 วันข้างหน้า
+def predict_next_3_days(data, model):
+    last_row = data.iloc[-1]
+    predictions = []
+    future_dates = pd.date_range(start=last_row.name, periods=288+1, freq='15T')[1:]  # สร้างช่วงเวลาสำหรับ 3 วันข้างหน้า (15 นาที)
+    
+    for future_date in future_dates:
+        # เพิ่มฟีเจอร์ด้านเวลา
+        hour = future_date.hour
+        day_of_week = future_date.dayofweek
+        minute = future_date.minute
+        lag_1 = data['wl_up'].iloc[-1]  # ใช้ค่าล่าสุดเป็น lag_1
+        lag_2 = data['wl_up'].iloc[-2]  # ใช้ค่าก่อนล่าสุดเป็น lag_2
+
+        X_future = np.array([[hour, day_of_week, minute, lag_1, lag_2]])
+        future_prediction = model.predict(X_future)[0]
+        
+        # เก็บผลลัพธ์พยากรณ์
+        predictions.append(future_prediction)
+
+        # อัปเดตข้อมูลเพื่อใช้ในการพยากรณ์ครั้งถัดไป
+        new_row = pd.Series({'hour': hour, 'day_of_week': day_of_week, 'minute': minute, 'lag_1': lag_1, 'lag_2': lag_2, 'wl_up': future_prediction}, name=future_date)
+        data = data.append(new_row)
+
+    future_data = pd.DataFrame({'wl_up': predictions}, index=future_dates)
+    return future_data
 
 # ฟังก์ชันสำหรับการ plot ข้อมูล
-def plot_filled_data(filled_data, original_nan_indexes):
+def plot_filled_data(filled_data, future_data=None, original_nan_indexes=None):
     plt.figure(figsize=(14, 7))
     plt.plot(filled_data.index, filled_data['wl_up'], label='Actual Values', color='blue', alpha=0.6)
-    filled_points = filled_data.loc[original_nan_indexes]
-    plt.scatter(filled_points.index, filled_points['wl_up'], label='Filled Values', color='red', alpha=0.6)
-    plt.title('Water Level Over Time with Filled Values')
+    
+    if original_nan_indexes is not None:
+        filled_points = filled_data.loc[original_nan_indexes]
+        plt.scatter(filled_points.index, filled_points['wl_up'], label='Filled Values', color='red', alpha=0.6)
+    
+    if future_data is not None:
+        plt.plot(future_data.index, future_data['wl_up'], label='Predicted Future Values (3 days)', color='green', alpha=0.6)
+
+    plt.title('Water Level Over Time with Filled and Predicted Values')
     plt.xlabel('DateTime')
     plt.ylabel('Water Level (wl_up)')
     plt.legend()
@@ -107,17 +141,27 @@ if uploaded_file is not None:
         selected_data = full_data.tz_localize(None).loc[start_date:end_date]
 
         # เติมค่าและเก็บตำแหน่งของ NaN เดิม
-        filled_data, original_nan_indexes = fill_missing_values(selected_data)
+        filled_data, original_nan_indexes, model = fill_missing_values(selected_data)
 
         # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
         st.markdown("---")
         st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
 
-        plot_filled_data(filled_data, original_nan_indexes)
+        # พยากรณ์ 3 วันข้างหน้า
+        future_data = predict_next_3_days(filled_data, model)
+
+        # Plot ผลลัพธ์ที่เติมค่าและผลการพยากรณ์ 3 วันข้างหน้า
+        plot_filled_data(filled_data, future_data=future_data, original_nan_indexes=original_nan_indexes)
 
         # แสดงผลลัพธ์การทำนายเป็นตาราง
-        st.subheader('ตารางข้อมูลที่ทำนาย (datetime, code, wl_up)')
-        st.write(filled_data[['code', 'wl_up']])
+        st.subheader('ตารางข้อมูลที่เติมค่า (datetime, wl_up)')
+        st.write(filled_data[['wl_up']])
+
+        # แสดงผลลัพธ์การพยากรณ์ 3 วันข้างหน้าเป็นตาราง
+        st.subheader('ตารางการพยากรณ์ 3 วันข้างหน้า (datetime, wl_up)')
+        st.write(future_data)
 
     else:
         st.error("กรุณาเลือกช่วงวันที่ที่ถูกต้อง (วันเริ่มต้นต้องน้อยกว่าวันสิ้นสุด)")
+
+
