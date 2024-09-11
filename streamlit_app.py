@@ -90,8 +90,9 @@ def predict_next_3_days(data, model):
         predictions.append(future_prediction)
 
         # อัปเดตข้อมูลเพื่อใช้ในการพยากรณ์ครั้งถัดไป
-        new_row = pd.Series({'hour': hour, 'day_of_week': day_of_week, 'minute': minute, 'lag_1': lag_1, 'lag_2': lag_2, 'wl_up': future_prediction}, name=future_date)
-        data = data.append(new_row)
+        new_row = pd.DataFrame({'hour': [hour], 'day_of_week': [day_of_week], 'minute': [minute], 
+                                'lag_1': [lag_1], 'lag_2': [lag_2], 'wl_up': [future_prediction]}, index=[future_date])
+        data = pd.concat([data, new_row])  # ใช้ pd.concat แทน .append()
 
     future_data = pd.DataFrame({'wl_up': predictions}, index=future_dates)
     return future_data
@@ -145,7 +146,7 @@ if uploaded_file is not None:
 
         # พล๊อตผลลัพธ์การทำนายและข้อมูลจริง
         st.markdown("---")
-        st.write("ทำนายระดับน้ำและเติมค่าในข้อมูลที่ขาดหาย")
+        st.write("เติมค่าในข้อมูลที่ขาดหายและทำนายค่าระดับน้ำในอีก 3 วันข้างหน้า")
 
         # พยากรณ์ 3 วันข้างหน้า
         future_data = predict_next_3_days(filled_data, model)
