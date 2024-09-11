@@ -20,6 +20,7 @@ def read_and_clean_data(file_path):
     cleaned_data = data[(data['wl_up'] >= 100) & (data['wl_up'] <= 450)].copy()
     cleaned_data['datetime'] = pd.to_datetime(cleaned_data['datetime'])
     cleaned_data.set_index('datetime', inplace=True)
+    cleaned_data = cleaned_data.sort_index()  # เรียงลำดับตาม datetime
     return cleaned_data
 
 # ฟังก์ชันสำหรับการเติมช่วงเวลาให้ครบทุก 15 นาที
